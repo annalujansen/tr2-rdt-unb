@@ -1,0 +1,56 @@
+=== small ===
+-> HELLO|grupo=grupo10|segment_size=512|file=small
+<- OK {'file_size': '1048576', 'checksum': 'f989450f6ca695013ceb6bd3a5f6417c', 'seed': 'rdtunb_grupo10_2026_10', 'total_segments': '2048', 'segment_size': '512'}
+MD5 recebido: f989450f6ca695013ceb6bd3a5f6417c
+MD5 esperado: f989450f6ca695013ceb6bd3a5f6417c  -> OK
+<- DONE ok=1
+
+===== RESUMO =====
+Arquivo salvo:          recebido_grupo10_small.bin (1048576 bytes, 2048 segmentos)
+CSV:                    metrics_grupo10_saw_20261013_211740.csv
+Tempo total:            131.86 s
+RTT médio:              38.49 ms (min 20.91, max 187.47)
+Retransmissões:         105  (segmentos com timeout: 93)
+Throughput medido:      63.62 kbps
+Throughput teórico SAW: 106.41 kbps  (segment_size*8 / RTT médio)
+Eficiência:             59.8%
+Checksum servidor:      OK
+=== medium ===
+-> HELLO|grupo=grupo10|segment_size=512|file=medium
+  [timeout] sem OK, retransmitindo (1/50)
+<- OK {'file_size': '5242880', 'checksum': '2593bb16a3f52e31a7b8773450e8da8b', 'seed': 'rdtunb_grupo10_2026_10', 'total_segments': '10240', 'segment_size': '512'}
+MD5 recebido: 2593bb16a3f52e31a7b8773450e8da8b
+MD5 esperado: 2593bb16a3f52e31a7b8773450e8da8b  -> OK
+<- DONE ok=1
+
+===== RESUMO =====
+Arquivo salvo:          recebido_grupo10_medium.bin (5242880 bytes, 10240 segmentos)
+CSV:                    metrics_grupo10_saw_20261013_212729.csv
+Tempo total:            588.66 s
+RTT médio:              39.17 ms (min 20.16, max 473.86)
+Retransmissões:         370  (segmentos com timeout: 345)
+Throughput medido:      71.25 kbps
+Throughput teórico SAW: 104.56 kbps  (segment_size*8 / RTT médio)
+Eficiência:             68.1%
+Checksum servidor:      OK
+=== large ===
+-> HELLO|grupo=grupo10|segment_size=512|file=large
+  [timeout] sem OK, retransmitindo (1/50)
+  [timeout] sem OK, retransmitindo (2/50)
+  [timeout] sem OK, retransmitindo (3/50)
+<- OK {'file_size': '10485760', 'checksum': '5623bc385a7b296e6c57d99290c03c0f', 'seed': 'rdtunb_grupo10_2026_10', 'total_segments': '20480', 'segment_size': '512'}
+MD5 recebido: 5623bc385a7b296e6c57d99290c03c0f
+MD5 esperado: 5623bc385a7b296e6c57d99290c03c0f  -> OK
+<- DONE ok=1
+
+===== RESUMO =====
+Arquivo salvo:          recebido_grupo10_large.bin (10485760 bytes, 20480 segmentos)
+CSV:                    metrics_grupo10_saw_20261013_214337.csv
+Tempo total:            965.94 s
+RTT médio:              35.58 ms (min 18.73, max 243.03)
+Retransmissões:         465  (segmentos com timeout: 457)
+Throughput medido:      86.84 kbps
+Throughput teórico SAW: 115.13 kbps  (segment_size*8 / RTT médio)
+Eficiência:             75.4%
+Checksum servidor:      OK
+fim

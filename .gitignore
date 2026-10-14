@@ -1,0 +1,11 @@
+# ambiente virtual Python
+.venv/
+__pycache__/
+
+# arquivos baixados do servidor (reproduzíveis; a prova é o MD5)
+*.bin
+
+# zips gerados para o Aprender3
+*.zip
+
+.DS_Store

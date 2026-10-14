@@ -1,0 +1,4 @@
+data_hora,grupo,arquivo,file_size,segment_size,total_segments,tempo_total_s,rtt_medio_ms,throughput_teorico_kbps,throughput_medido_kbps,eficiencia_pct,retransmissoes,md5,done_ok,csv
+2026-10-13T21:17:40-03:00,grupo10,small,1048576,512,2048,131.86,38.49,106.41,63.62,59.8,105,f989450f6ca695013ceb6bd3a5f6417c,1,metrics_grupo10_saw_20261013_211740.csv
+2026-10-13T21:27:30-03:00,grupo10,medium,5242880,512,10240,588.66,39.17,104.56,71.25,68.1,370,2593bb16a3f52e31a7b8773450e8da8b,1,metrics_grupo10_saw_20261013_212729.csv
+2026-10-13T21:43:37-03:00,grupo10,large,10485760,512,20480,965.94,35.58,115.13,86.84,75.4,465,5623bc385a7b296e6c57d99290c03c0f,1,metrics_grupo10_saw_20261013_214337.csv
