@@ -83,9 +83,9 @@ def request_reply(sock, addr, message: bytes, expected_type: str, timeout_s, max
     """
     for attempt in range(max_retries):
         sock.sendto(message, addr)
-        deadline = time.monotonic() + timeout_s
+        deadline = time.perf_counter() + timeout_s
         while True:
-            remaining = deadline - time.monotonic()
+            remaining = deadline - time.perf_counter()
             if remaining <= 0:
                 break  # estourou o timeout -> retransmite
             sock.settimeout(remaining)
@@ -135,27 +135,27 @@ def main():
     rows = []                # uma linha do CSV por segmento
     total_retx = 0
     total_timeouts = 0
-    t_start = time.monotonic()
+    t_start = time.perf_counter()
 
     for seq in range(total_segments):
         req = f"REQ|seq={seq}".encode()
         retransmissions = 0
         timeout_occurred = 0
-        t_first_req = time.monotonic()   # 1º envio deste segmento (p/ throughput)
+        t_first_req = time.perf_counter()   # 1º envio deste segmento (p/ throughput)
         payload = None
 
         while payload is None:
             if retransmissions > args.max_retries:
                 raise RuntimeError(f"Segmento {seq}: excedeu {args.max_retries} retransmissões")
 
-            t_sent = time.monotonic()    # último envio do REQ (p/ RTT)
+            t_sent = time.perf_counter()    # último envio do REQ (p/ RTT)
             sock.sendto(req, addr)
             deadline = t_sent + timeout_s
 
             # Espera o DATA certo até o timeout. Pacotes de outro seq (duplicatas
             # atrasadas de retransmissões anteriores) são descartados.
             while True:
-                remaining = deadline - time.monotonic()
+                remaining = deadline - time.perf_counter()
                 if remaining <= 0:
                     break
                 sock.settimeout(remaining)
@@ -166,7 +166,7 @@ def main():
                 parsed = parse_data_packet(data)
                 if parsed is not None and parsed[0] == seq:
                     payload = parsed[1]
-                    t_recv = time.monotonic()
+                    t_recv = time.perf_counter()
                     break
 
             if payload is None:
@@ -201,7 +201,7 @@ def main():
         if seq % 100 == 0 or seq == total_segments - 1:
             print(f"  seg {seq + 1}/{total_segments}  rtt={rtt_ms:.1f}ms  retx={retransmissions}")
 
-    elapsed = time.monotonic() - t_start
+    elapsed = time.perf_counter() - t_start
 
     # ---------------- 3) Verificação de integridade (MD5) ----------------
     received = bytes(received[:file_size])
