@@ -3,20 +3,38 @@
 Gera os gráficos de throughput e RTT por segmento a partir do CSV do cliente.
 
 Uso:
-    .venv/bin/python graficos.py metrics_grupo01_saw_20261015_143022.csv
+    .venv/bin/python graficos.py metrics_grupo01_saw_20261015_143022.csv [--janela 100]
 Gera: <nome_do_csv>.png
+
+Além dos valores por segmento, desenha a média móvel (janela de N segmentos), que
+mostra a tendência mesmo quando há milhares de pontos (medium/large).
 """
 
+import argparse
 import csv
-import sys
 
 import matplotlib.pyplot as plt
 
 
+def moving_average(values, window):
+    """Média de cada bloco deslizante de `window` valores (centrada no segmento)."""
+    half = window // 2
+    prefix = [0.0]
+    for v in values:
+        prefix.append(prefix[-1] + v)
+    out = []
+    for i in range(len(values)):
+        lo, hi = max(0, i - half), min(len(values), i + half + 1)
+        out.append((prefix[hi] - prefix[lo]) / (hi - lo))
+    return out
+
+
 def main():
-    if len(sys.argv) != 2:
-        sys.exit("uso: python3 graficos.py <arquivo.csv>")
-    path = sys.argv[1]
+    ap = argparse.ArgumentParser(description="Gráficos de throughput e RTT por segmento")
+    ap.add_argument("csv", help="CSV gerado pelo cliente")
+    ap.add_argument("--janela", type=int, default=100, help="segmentos na média móvel (padrão 100)")
+    args = ap.parse_args()
+    path = args.csv
 
     seg, rtt, thr, retx, sizes = [], [], [], [], []
     with open(path) as f:
@@ -36,23 +54,32 @@ def main():
     avg_thr = sum(sizes) * 8 / 1000 / sum(seg_times)
     retx_segs = [s for s, r in zip(seg, retx) if r > 0]
 
+    # Média móvel do throughput também ponderada pelo tempo (bits da janela / tempo da janela)
+    bits_ma = moving_average([b * 8 / 1000 for b in sizes], args.janela)
+    time_ma = moving_average(seg_times, args.janela)
+    thr_ma = [b / t for b, t in zip(bits_ma, time_ma)]
+    rtt_ma = moving_average(rtt, args.janela)
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
 
-    ax1.plot(seg, thr, lw=0.6, label="throughput instantâneo")
+    ax1.plot(seg, thr, lw=0.5, alpha=0.35, color="tab:blue", label="throughput por segmento")
+    ax1.plot(seg, thr_ma, lw=1.8, color="tab:blue", label=f"média móvel ({args.janela} seg.)")
     ax1.axhline(avg_thr, color="tab:green", ls="--", label=f"média medida ({avg_thr:.1f} kbps)")
     ax1.axhline(theoretical, color="tab:red", ls=":", label=f"teórico máx. ({theoretical:.1f} kbps)")
     ax1.set_ylabel("Throughput (kbps)")
-    ax1.set_title("Stop-and-Wait — throughput e RTT por segmento")
-    ax1.legend(loc="lower right")
+    ax1.set_title(f"Stop-and-Wait — throughput e RTT por segmento ({len(seg)} segmentos)")
+    ax1.legend(loc="lower right", fontsize=8)
     ax1.grid(alpha=0.3)
 
-    ax2.plot(seg, rtt, lw=0.6, color="tab:orange", label="RTT medido")
-    ax2.axhline(avg_rtt, color="tab:gray", ls="--", label=f"RTT médio ({avg_rtt:.1f} ms)")
     for s in retx_segs:  # marca os segmentos que tiveram retransmissão
-        ax2.axvline(s, color="tab:red", alpha=0.3, lw=0.8)
+        ax2.axvline(s, color="tab:red", alpha=0.2, lw=0.6)
+    ax2.plot(seg, rtt, lw=0.5, alpha=0.35, color="tab:orange", label="RTT por segmento")
+    ax2.plot(seg, rtt_ma, lw=1.8, color="tab:orange", label=f"média móvel ({args.janela} seg.)")
+    ax2.axhline(avg_rtt, color="tab:gray", ls="--", label=f"RTT médio ({avg_rtt:.1f} ms)")
+    ax2.plot([], [], color="tab:red", alpha=0.4, label="segmento com retransmissão")
     ax2.set_xlabel("Segmento")
     ax2.set_ylabel("RTT (ms)")
-    ax2.legend(loc="upper right")
+    ax2.legend(loc="upper right", fontsize=8)
     ax2.grid(alpha=0.3)
 
     out = path.rsplit(".", 1)[0] + ".png"
