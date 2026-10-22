@@ -1,0 +1,2 @@
+data_hora,grupo,protocolo,janela,perda_simulada,seed,arquivo,file_size,segment_size,total_segments,tempo_total_s,rtt_medio_ms,throughput_teorico_kbps,throughput_medido_kbps,eficiencia_pct,retransmissoes,segmentos_com_timeout,segmentos_com_perda_simulada,dados_descartados_simulados,md5,md5_ok,done_ok,csv
+2026-10-22T17:15:00-03:00,grupo01,saw,1,0.0,2126235158,small,1048576,512,2048,185.09,90.21,45.41,45.32,99.8,0,0,0,0,3c28edf30b9499ad3324c5cefaba2bb2,1,1,resultados\small_saw_w1_loss0\metrics_grupo01_saw_20261022_171500.csv
