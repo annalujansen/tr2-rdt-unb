@@ -129,7 +129,7 @@ Tudo é texto separado por `|`, menos o payload do `DATA`, que é **binário**.
 ### 5. Handshake `HELLO` / `OK` — função `request_reply`
 
 ```
-HELLO|grupo=grupo01|segment_size=512|file=small
+HELLO|grupo=grupo10|segment_size=512|file=small
 OK|file_size=...|checksum=<md5>|seed=...|total_segments=...|segment_size=...
 ```
 O `HELLO` também pode se perder, então `request_reply` envia, espera até o timeout e, se nada
