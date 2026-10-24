@@ -3,9 +3,9 @@
 Cliente RDT-UnB v1.0 — Entrega 2: SAW, GBN e SR com simulação de perda.
 
 Uso:
-    python3 cliente.py --group grupo01 --file small --protocol saw
-    python3 cliente.py --group grupo01 --file small --protocol gbn --window 8 --loss 0.05
-    python3 cliente.py --group grupo01 --file small --protocol sr  --window 16 --loss 0.10 --seed 42
+    python3 cliente.py --group grupo10 --file small --protocol saw
+    python3 cliente.py --group grupo10 --file small --protocol gbn --window 8 --loss 0.05
+    python3 cliente.py --group grupo10 --file small --protocol sr  --window 16 --loss 0.10 --seed 42
 
 Na DEMO: não use --loss (padrão 0 = sem simulação; só a perda natural da rede).
 """
@@ -21,7 +21,7 @@ def parse_args():
     ap = argparse.ArgumentParser(description="Cliente RDT-UnB — SAW / GBN / SR")
     ap.add_argument("--server", default="137.131.178.229", help="IP do servidor")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
-    ap.add_argument("--group", required=True, help="ID do grupo (obrigatório), ex.: grupo01")
+    ap.add_argument("--group", required=True, help="ID do grupo (obrigatório), ex.: grupo10")
     ap.add_argument("--file", choices=["small", "medium", "large"], default="small")
     ap.add_argument("--protocol", choices=["saw", "gbn", "sr"], default="saw")
     ap.add_argument("--window", type=int, default=None,
