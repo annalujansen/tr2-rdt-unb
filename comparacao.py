@@ -7,8 +7,11 @@ Uso:
                                    [--grupo grupo10] [--arquivo small] [--saida resultados]
 
 Gera, na pasta de saída:
-  tabela_comparativa.csv   uma linha por cenário (protocolo, janela, perda)
+  tabela_comparativa.csv   formato do enunciado: uma linha por protocolo × janela e, para
+                           Sem perda / 5% / 10%, throughput médio, retransmissões e tempo total
   tabela_comparativa.tex   a mesma tabela em LaTeX, para colar no Overleaf
+  comparacao_segmentos_w<J>_loss<P>.png   GBN × SR com a mesma janela (--janela) e perda 5% e
+                           10%: throughput e retransmissões acumuladas ao longo da transferência
   comparacao_perda.png     SAW × GBN × SR conforme a perda (GBN e SR com a janela de --janela)
                            -> por que o GBN sofre mais que o SR com perda alta
   comparacao_janela.png    GBN e SR conforme a janela -> impacto do tamanho da janela
@@ -57,16 +60,33 @@ def scenarios():
                 yield (proto, w, loss)
 
 
+def table_rows():
+    """Linhas da tabela do enunciado: SAW 1, GBN 4/8/16, SR 4/8/16."""
+    yield ("saw", 1)
+    for proto in ("gbn", "sr"):
+        for w in WINDOWS:
+            yield (proto, w)
+
+
 def write_tables(data, outdir):
-    cols = ["protocolo", "janela", "perda_pct", "tempo_total_s", "throughput_medido_kbps",
-            "retransmissoes", "dados_descartados_simulados", "rtt_medio_ms", "eficiencia_pct"]
+    """Tabela no formato do enunciado: uma linha por protocolo × janela e, para cada
+    cenário de perda (Sem perda / 5% / 10%), throughput médio, retransmissões e tempo total."""
+    loss_tag = {0.0: "0", 0.05: "5", 0.10: "10"}
+    cols = ["protocolo", "janela"]
+    for loss in LOSSES:
+        t = loss_tag[loss]
+        cols += [f"throughput_kbps_{t}", f"retransmissoes_{t}", f"tempo_s_{t}"]
+
     rows = []
-    for proto, w, loss in scenarios():
-        r = data.get((proto, w, loss))
-        rows.append({
-            "protocolo": NAMES[proto], "janela": w, "perda_pct": f"{loss * 100:g}",
-            **{c: (r[c] if r else "-") for c in cols[3:]},
-        })
+    for proto, w in table_rows():
+        row = {"protocolo": NAMES[proto], "janela": w}
+        for loss in LOSSES:
+            r = data.get((proto, w, loss))
+            t = loss_tag[loss]
+            row[f"throughput_kbps_{t}"] = r["throughput_medido_kbps"] if r else "-"
+            row[f"retransmissoes_{t}"] = r["retransmissoes"] if r else "-"
+            row[f"tempo_s_{t}"] = r["tempo_total_s"] if r else "-"
+        rows.append(row)
 
     csv_path = os.path.join(outdir, "tabela_comparativa.csv")
     with open(csv_path, "w", newline="") as f:
@@ -76,21 +96,22 @@ def write_tables(data, outdir):
 
     tex_path = os.path.join(outdir, "tabela_comparativa.tex")
     with open(tex_path, "w") as f:
-        f.write("\\begin{tabular}{lrrrrrr}\n\\hline\n")
-        f.write("Protocolo & Janela & Perda (\\%) & Tempo (s) & Throughput (kbps) "
-                "& Retransm. & Descartes sim. \\\\\n\\hline\n")
+        f.write("\\begin{tabular}{lr|rrr|rrr|rrr}\n\\hline\n")
+        f.write(" & & \\multicolumn{3}{c|}{Sem perda} & \\multicolumn{3}{c|}{5\\% perda} "
+                "& \\multicolumn{3}{c}{10\\% perda} \\\\\n")
+        f.write("Protocolo & Janela" + " & Thr. (kbps) & Retx. & Tempo (s)" * 3 + " \\\\\n\\hline\n")
         for r in rows:
-            f.write(f"{r['protocolo']} & {r['janela']} & {r['perda_pct']} & {r['tempo_total_s']} "
-                    f"& {r['throughput_medido_kbps']} & {r['retransmissoes']} "
-                    f"& {r['dados_descartados_simulados']} \\\\\n")
+            f.write(f"{r['protocolo']} & {r['janela']} & "
+                    + " & ".join(str(r[c]) for c in cols[2:]) + " \\\\\n")
         f.write("\\hline\n\\end{tabular}\n")
 
     # Também imprime no terminal, para conferir na hora
-    print(f"{'prot':<5}{'jan':>4}{'perda':>7}{'tempo_s':>10}{'kbps':>10}{'retx':>7}{'descartes':>11}")
+    print(f"{'':<10}" + "".join(f"{h:^27}" for h in ("Sem perda", "5% perda", "10% perda")))
+    print(f"{'prot':<5}{'jan':>4} " + f"{'kbps':>10}{'retx':>7}{'tempo_s':>10}" * 3)
     for r in rows:
-        print(f"{r['protocolo']:<5}{r['janela']:>4}{r['perda_pct'] + '%':>7}{r['tempo_total_s']:>10}"
-              f"{r['throughput_medido_kbps']:>10}{r['retransmissoes']:>7}"
-              f"{r['dados_descartados_simulados']:>11}")
+        print(f"{r['protocolo']:<5}{r['janela']:>4} "
+              + "".join(f"{r[c]:>10}" if c.startswith(("throughput", "tempo")) else f"{r[c]:>7}"
+                        for c in cols[2:]))
     return csv_path, tex_path
 
 
@@ -163,6 +184,57 @@ def plot_by_window(data, outdir):
     return out
 
 
+def segment_series(csv_path, k):
+    """Lê o CSV por segmento e devolve as séries na ordem em que os DATA foram ACEITOS:
+      xs   = nº de segmentos já recebidos (posição na transferência)
+      thr  = throughput dos últimos k segmentos: bits recebidos / tempo que levaram (kbps)
+      retx = retransmissões acumuladas até ali
+    (O throughput_kbps de cada linha é muito ruidoso; a janela de k segmentos suaviza.)"""
+    csv_path = csv_path.replace("\\", "/")      # resumos gravados no Windows
+    with open(csv_path) as f:
+        rows = sorted(csv.DictReader(f), key=lambda r: float(r["recv_time_ms"]))
+    t = [0.0] + [float(r["recv_time_ms"]) for r in rows]
+    bits = [0] + [int(r["size_bytes"]) * 8 for r in rows]
+    for i in range(1, len(bits)):
+        bits[i] += bits[i - 1]
+    xs, thr, retx, acc = [], [], [], 0
+    for i, r in enumerate(rows, start=1):
+        j = max(0, i - k)
+        xs.append(i)
+        thr.append((bits[i] - bits[j]) / max(t[i] - t[j], 1e-3))   # bits/ms = kbps
+        acc += int(r["retransmissions"])
+        retx.append(acc)
+    return xs, thr, retx
+
+
+def plot_segments(data, outdir, w, loss, k=50):
+    """GBN × SR com a MESMA janela e perda, ao longo da transferência.
+    Em cima: throughput (média dos últimos k segmentos). Embaixo: retransmissões acumuladas."""
+    runs = {p: data.get((p, w, loss)) for p in ("gbn", "sr")}
+    if not all(runs.values()):
+        return None
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 6.5), sharex=True)
+    all_thr = []
+    for proto, r in runs.items():
+        xs, thr, retx = segment_series(r["csv"], k)
+        all_thr += thr
+        label = f"{NAMES[proto]}: {r['tempo_total_s']} s, {r['retransmissoes']} retransmissões"
+        ax1.plot(xs, thr, lw=1.3, color=COLORS[proto], label=label)
+        ax2.plot(xs, retx, lw=2, color=COLORS[proto], label=label)
+    style(ax1, "", f"Throughput (kbps, últimos {k} segm.)",
+          f"GBN × SR por segmento — janela {w}, perda simulada {loss * 100:g}%")
+    # Rajadas raras (vários DATA chegando quase juntos) achatariam o resto do gráfico:
+    # corta o eixo no percentil 99.
+    ax1.set_ylim(0, 1.2 * sorted(all_thr)[int(0.99 * (len(all_thr) - 1))])
+    style(ax2, "Segmentos recebidos (ordem de aceitação)", "Retransmissões acumuladas",
+          "Retransmissões ao longo da transferência")
+    fig.tight_layout()
+    out = os.path.join(outdir, f"comparacao_segmentos_w{w}_loss{loss * 100:g}.png")
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="Tabela e gráficos comparativos SAW × GBN × SR")
     ap.add_argument("--resumo", default=os.path.join("resultados", "resumo_entrega2.csv"))
@@ -180,9 +252,12 @@ def main():
 
     total = len(list(scenarios()))
     print(f"{len(data)} de {total} cenários encontrados ({args.grupo}, {args.arquivo})\n")
-    for path in (*write_tables(data, args.saida), plot_by_loss(data, args.saida, args.janela),
-                 plot_by_window(data, args.saida)):
-        print(f"Gerado: {path}")
+    outputs = [*write_tables(data, args.saida), plot_by_loss(data, args.saida, args.janela),
+               plot_by_window(data, args.saida)]
+    outputs += [plot_segments(data, args.saida, args.janela, loss) for loss in LOSSES[1:]]
+    for path in outputs:
+        if path:
+            print(f"Gerado: {path}")
 
 
 if __name__ == "__main__":
