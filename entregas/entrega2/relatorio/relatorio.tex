@@ -127,7 +127,7 @@ Avançando janela & \cod{received[base]} & \cod{base++} (enquanto houver consecu
 \end{tabular}
 \end{center}
 
-No SAW e no SR, uma retransmissão em segmento com \cod{simulated\_loss = 0} seria perda natural da rede UDP. Nos nossos dados ela foi \textbf{zero}: em todos os cenários do SAW e do SR, o total de retransmissões é igual ao de DATA descartados pela simulação (91 com 5\,\%, 220 com 10\,\%), e os cenários sem perda simulada não tiveram nenhuma retransmissão. No GBN essa separação é diferente: os segmentos reenviados ``de carona'' no ``volta N'' também têm \cod{simulated\_loss = 0} (1\,202 segmentos no GBN-16 com 10\,\%), sem que tenha havido perda natural.
+No SAW e no SR, uma retransmissão em segmento com \cod{simulated\_loss = 0} seria perda natural da rede UDP. Nos 21 cenários oficiais ela foi \textbf{zero}: em todos os cenários do SAW e do SR, o total de retransmissões é igual ao de DATA descartados pela simulação (91 com 5\,\%, 220 com 10\,\%), e os cenários sem perda simulada não tiveram nenhuma retransmissão. No GBN essa separação é diferente: os segmentos reenviados ``de carona'' no ``volta N'' também têm \cod{simulated\_loss = 0} (1\,202 segmentos no GBN-16 com 10\,\%), sem que tenha havido perda natural.
 
 \textbf{Observação:} o sorteio é feito \textbf{por DATA recebido}, não por segmento. No GBN cada segmento chega várias vezes (por causa do ``volta N''), então ele consome mais sorteios e tem mais descartes que SAW e SR com a mesma seed (541 contra 220 com 10\,\%). A probabilidade por pacote é a mesma para todos.
 
@@ -192,7 +192,18 @@ SR  & 16 & 1900,7 / 0 / 4,4   & 260,7 / 91 / 32,2   & 153,7 / 220 / 54,6\\
 
 Sem perda, a janela multiplica a vazão, pois $\text{throughput} \approx N \times L / \text{RTT}$: SAW 167\,kbps $\to$ $N=4$ $\sim$650 $\to$ $N=8$ $\sim$1\,200 $\to$ $N=16$ $\sim$2\,000\,kbps, com eficiência de $\sim$99\,\% em todos os casos (medido $\div$ teórico). O ganho com $N=16$ é de $\sim$12$\times$ e não 16$\times$, porque o RTT médio sobe de $\sim$24\,ms para $\sim$32--34\,ms com 16 REQs em voo (enfileiramento). Sem perda, GBN e SR se comportam de forma praticamente igual ($N=8$: 1\,236 contra 1\,163\,kbps), pois a diferença entre eles só aparece quando há retransmissão.
 
-\textbf{Estabilização:} nas janelas testadas (4, 8 e 16) o throughput \textbf{ainda não se estabilizou}: cresce a cada dobra da janela, com retorno decrescente (4$\to$8: 1,88$\times$; 8$\to$16: 1,64$\times$). Isso indica que o limite do gargalo (banda ou capacidade do servidor) está se aproximando, mas não foi atingido: o primeiro sinal aparece em $N=16$, quando o RTT médio sobe de $\sim$25\,ms para $\sim$32--34\,ms (fila), então a estabilização deve ocorrer em janelas pouco acima de 16. Estabilizar significa que $N \times L / \text{RTT}$ passa a superar o que o caminho aguenta; daí aumentar $N$ só aumenta o RTT (fila), não a vazão.
+\textbf{Estabilização:} nas janelas obrigatórias (4, 8 e 16) o throughput ainda cresce a cada dobra, com retorno decrescente (4$\to$8: 1,88$\times$; 8$\to$16: 1,64$\times$). Para achar o ponto de estabilização, rodamos uma varredura extra sem perda em 28/10 (GBN e SR, $N = 4, 8, 16, 24, 32, 48, 64, 96, 128$, duas rodadas cada, todas com MD5 correto; \cod{resultados/janela\_estabilizacao/}). A Figura~\ref{fig:estab} mostra o resultado: o throughput cresce quase linearmente até $N=16$ ($\sim$2\,000\,kbps), desacelera em $N=24$--32 ($\sim$2\,300--2\,500\,kbps) e \textbf{estabiliza a partir de $N \approx 32$--48, em $\sim$2\,700--2\,900\,kbps} (SR: 2\,742 / 2\,774 / 2\,901 / 2\,782\,kbps em $N=48/64/96/128$). Dobrar a janela de 48 para 96 rende só $\sim$6\,\%.
+
+\textbf{Por quê:} enquanto $N \times L$ é menor que o produto banda $\times$ atraso, o cliente fica ocioso esperando DATA, e cada REQ a mais em voo vira vazão a mais, com o RTT praticamente constante ($\sim$30--33\,ms até $N=16$). Com um RTT base de $\sim$30\,ms e um gargalo de $\sim$2,8\,Mbps, esse produto é $2{,}8\,\text{Mbps} \times 30\,\text{ms} \approx 84\,\text{kbit} \approx 20$ segmentos de 512\,B: é exatamente onde a curva dobra. Acima disso o caminho (rede ou taxa de atendimento do servidor) já está sempre ocupado, e os REQs extras só esperam em fila: o RTT passa a crescer \textbf{proporcionalmente a $N$} (39\,ms em $N=24$, 50\,ms em 32, 71\,ms em 48, 93\,ms em 64, $\sim$130\,ms em 96), de modo que $N/\text{RTT}$ fica constante em $\sim$700 segmentos/s ($\approx 1{,}4$\,ms por segmento). Ou seja, aumentar a janela além de $\sim$32 não aumenta a vazão, só a fila.
+
+Janelas grandes demais chegam a piorar: em $N=128$ a fila transborda e aparecem perdas naturais (sem \cod{--loss}). O SR retransmite só os perdidos (64--73 retransmissões) e mantém $\sim$2\,780\,kbps, mas o GBN reenvia a janela inteira a cada timeout (604--724 retransmissões) e cai para $\sim$1\,700\,kbps. Perdas naturais esporádicas (1--2 timeouts) aparecem também em janelas menores, mas custam muito mais ao GBN (até 107 retransmissões em $N=96$) que ao SR (no máximo 6). Para este servidor, uma janela em torno de \textbf{32--48} dá o throughput máximo sem encher a fila à toa.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.92\textwidth]{figuras/estabilizacao_janela.png}
+  \caption{Varredura extra sem perda (28/10): throughput (esquerda) e RTT médio (direita) conforme a janela, em escala log. Pontos claros: cada rodada; linha: média das duas. A faixa cinza marca o patamar de $\sim$2\,700--2\,900\,kbps. A partir de $N \approx 32$ o throughput para de crescer e o RTT passa a crescer na proporção de $N$ (fila); em $N=128$ surgem perdas naturais, que derrubam o GBN.}
+  \label{fig:estab}
+\end{figure}
 
 \begin{figure}[H]
   \centering
@@ -206,12 +217,14 @@ Sem perda, a janela multiplica a vazão, pois $\text{throughput} \approx N \time
 \begin{center}\small
 \begin{tabular}{@{}l r r r r@{}}
 \toprule
- & \textbf{Segm.\ com timeout} & \textbf{Timeouts (eventos)} & \textbf{Retransmissões} & \textbf{Retx.\ $\div$ timeout}\\
+ & \textbf{Segm.\ com timeout} & \textbf{Timeouts (eventos)$^*$} & \textbf{Retransmissões} & \textbf{Retx.\ $\div$ timeout}\\
 \midrule
 GBN-16 & 207 & $\geq$ 223 & 3\,562 & $\leq$ 16\\
 SR-16  & 191 & 220        & 220    & 1,0\\
 \bottomrule
 \end{tabular}
+
+\footnotesize $^*$No GBN, estouros do temporizador único da base; no SR, expirações dos temporizadores individuais de cada segmento.
 \end{center}
 
 A coluna \cod{timeout\_occurred} do CSV conta \emph{segmentos} que sofreram timeout, não eventos: no GBN, se a mesma base estoura duas vezes, ela é marcada uma vez só. Por isso o número de eventos é obtido das retransmissões. No \textbf{GBN}, cada timeout reenvia a base e os segmentos seguintes já pedidos (no máximo 16), logo houve pelo menos $3\,562 \div 16 \approx 223$ timeouts. No CSV, 1\,667 dos 2\,048 segmentos foram retransmitidos ao menos uma vez (até 7 vezes), e 1\,202 deles nunca tiveram um DATA próprio descartado. No \textbf{SR}, cada timeout reenvia exatamente um segmento: as 220 retransmissões coincidem com os 220 DATA descartados pela simulação (soma de \cod{sim\_drops}), em 191 segmentos (165 reenviados uma vez, 23 duas e 3 três vezes, quando o próprio reenvio também foi descartado). Contando por DATA descartado, o GBN fez $3\,562 \div 541 \approx 6{,}6$ retransmissões por descarte. Em números absolutos, o GBN-16 retransmitiu \textbf{16$\times$ mais} que o SR-16 nas mesmas condições de perda.
@@ -227,7 +240,7 @@ A coluna \cod{timeout\_occurred} do CSV conta \emph{segmentos} que sofreram time
 
 \begin{enumerate}[label=\arabic*.]
   \item \textbf{Volume de retransmissões.} Com 10\,\% de perda, o GBN-16 retransmite 3\,562 segmentos contra 220 do SR; com 5\,\%, 1\,512 contra 91 ($\sim$16,6$\times$). O GBN reenvia a janela inteira a cada timeout, e cada reenvio extra é também um DATA exposto a novas perdas.
-  \item \textbf{Os timeouts do GBN se somam; os do SR se sobrepõem.} No GBN cada timeout trava todo o progresso: pelo menos $223 \times 0{,}5\,\text{s} \approx 112$\,s dos 119,3\,s do GBN-16 foram gastos esperando timeouts. No SR, enquanto um segmento espera o timeout, os outros da janela continuam chegando e vão para o buffer: os 220 timeouts do SR-16 somariam 110\,s se fossem sequenciais, mas a transferência terminou em \textbf{54,6\,s}.
+  \item \textbf{Os timeouts do GBN se somam; os do SR se sobrepõem.} No GBN cada timeout trava todo o progresso: pelo menos $223 \times 0{,}5\,\text{s} \approx 112$\,s dos 119,3\,s do GBN-16 foram gastos esperando timeouts. No SR, enquanto um segmento espera o timeout, os outros da janela continuam chegando e vão para o buffer: os 220 timeouts do SR-16 somariam 110\,s se fossem sequenciais, mas a transferência terminou em \textbf{54,6\,s}. Contando no CSV os intervalos de mais de 300\,ms sem nenhuma chegada, o SR-16 teve só 98 paradas para 220 timeouts (vários timers da mesma janela vencem juntos e uma única espera recupera várias perdas), enquanto o GBN-16 teve 207.
   \item \textbf{A janela só ajuda o SR com perda.} Com 10\,\% de perda, o throughput do GBN quase não cresce com $N$ (63,8 $\to$ 66,9 $\to$ 70,3\,kbps), enquanto o do SR cresce bastante (84,4 $\to$ 109,6 $\to$ 153,7\,kbps): quanto maior $N$, mais trabalho útil acontece durante cada espera por timeout. O SR-16 com 10\,\% de perda (153,7\,kbps) chega perto do SAW \emph{sem} perda (167,2\,kbps), enquanto o GBN-16 com 10\,\% (70,3\,kbps) fica abaixo da metade.
 \end{enumerate}
 
