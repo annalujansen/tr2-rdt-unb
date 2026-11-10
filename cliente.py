@@ -31,6 +31,10 @@ def parse_args():
     ap.add_argument("--seed", type=int, default=None, help="seed da simulação (repetibilidade)")
     ap.add_argument("--segment-size", type=int, default=DEFAULT_SEGMENT_SIZE)
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_MS, help="timeout fixo em ms")
+    ap.add_argument("--timeout-mode", choices=["fixed", "adaptive"], default="fixed",
+                    help="modo do timeout; adaptive está disponível em GBN e SR")
+    ap.add_argument("--alpha", type=float, default=0.125, help="peso do RTT medido na EWMA")
+    ap.add_argument("--beta", type=float, default=0.25, help="peso do desvio na EWMA")
     ap.add_argument("--max-retries", type=int, default=DEFAULT_MAX_RETRIES)
     ap.add_argument("--outdir", default="resultados", help="pasta de saída (CSV, .bin, resumo)")
     args = ap.parse_args()
@@ -39,6 +43,10 @@ def parse_args():
         ap.error("--loss deve estar em [0, 1), ex.: 0.05")
     if args.protocol in ("gbn", "sr") and (args.window is None or args.window < 1):
         ap.error(f"--window é obrigatório para {args.protocol} (use 4, 8 ou 16)")
+    if args.timeout_mode == "adaptive" and args.protocol not in ("gbn", "sr"):
+        ap.error("--timeout-mode adaptive está disponível com --protocol gbn ou sr")
+    if not 0 < args.alpha <= 1 or not 0 < args.beta <= 1:
+        ap.error("--alpha e --beta devem estar no intervalo (0, 1]")
     return args
 
 

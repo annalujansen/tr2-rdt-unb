@@ -475,3 +475,36 @@ O tempo total se explica quase exatamente por **N × RTT + retransmissões × ti
   de 500 ms é grande demais na maior parte do tempo — motivação para o RTT adaptativo (Entrega 3).
 - **Na rede real há perda natural:** os três testes tiveram retransmissões sem nenhuma
   simulação de perda; inclusive o `HELLO` do large precisou ser reenviado 3 vezes.
+
+## Entrega 3 — RTT adaptativo no GBN e SR
+
+GBN e SR suportam `--timeout-mode adaptive`; SAW continua usando timeout fixo. O primeiro
+RTO adaptativo é o valor de `--timeout` (500 ms por padrão). Após uma amostra válida, o
+cliente inicializa `SRTT = R` e `DevRTT = R/2`; nas amostras seguintes usa α e β e calcula
+`RTO = SRTT + 4 × DevRTT`. Amostras de segmentos retransmitidos são excluídas pelo algoritmo
+de Karn. O RTO é guardado por envio: o SR usa o prazo próprio de cada segmento; o GBN mantém
+um único timer para a base e o reinicia quando a base avança ou é retransmitida. Há limites
+operacionais de 1 ms e 60 s.
+
+O CSV por segmento inclui RTT medido, RTT estimado, DevRTT, timeout usado, modo, α e β.
+`graficos.py` desenha as séries de RTT e timeout. Os resumos da Entrega 3 ficam separados em
+`<outdir>/resumo_entrega3.csv`; a tabela pareada e o gráfico da comparação são
+`comparacao_entrega3.csv` e `comparacao_entrega3.png`.
+
+As execuções continuam sendo iniciadas por `cliente.py`. Exemplo para GBN adaptativo:
+
+```bash
+python3 cliente.py --group grupo10 --file small --protocol gbn --window 16 --loss 0.05 --seed 42 --timeout-mode adaptive --alpha 0.125 --beta 0.25 --outdir resultados_entrega3
+python3 cliente.py --group grupo10 --file small --protocol gbn --window 16 --loss 0.05 --seed 42 --timeout-mode fixed --outdir resultados_entrega3
+```
+
+Repita ambos com `--loss 0.10` e para SR, e compare também os pares (α, β) = (0.25, 0.25)
+e (0.125, 0.5), sempre mantendo arquivo, janela, seed e demais opções iguais. Os resultados
+ficam em `resultados_entrega3/`. O comparador aceita `--protocolo gbn` ou `--protocolo sr`:
+
+```bash
+python3 comparacao_entrega3.py --resumo resultados_entrega3/resumo_entrega3.csv --protocolo gbn --arquivo small --saida resultados_entrega3
+```
+
+Para cada CSV, gere os gráficos detalhados de RTT estimado e timeout com
+`python3 graficos.py caminho/metrics_grupo10_<protocolo>_<timestamp>.csv`.

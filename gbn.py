@@ -32,14 +32,16 @@ def run(sess):
             next_seq += 1
 
         # 2) Espera algum DATA até o temporizador da base estourar.
-        pacote = recv_data(sess, timer_start + sess["timeout_s"])
+        # No GBN há um temporizador: o da base. O prazo usa o RTO guardado
+        # quando o REQ da base foi enviado (também após reiniciar o timer).
+        pacote = recv_data(sess, timer_start + sess["timeout_at_send"][base])
         if pacote is None:
             # 3) Timeout da base: "volta N" -> reenvia a base e todos os seguintes,
             # mesmo os que talvez já tenham chegado (e foram descartados).
             timed_out.add(base)
-            timer_start = time.perf_counter()  # reinicia o temporizador
             for s in range(base, next_seq):
                 send_req(sess, s)
+            timer_start = sess["last_send"][base]  # novo timer da base retransmitida
             continue
 
         seq, data, t_recv = pacote

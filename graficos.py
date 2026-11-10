@@ -42,12 +42,14 @@ def main():
     args = ap.parse_args()
     path = args.csv
 
-    seg, rtt, thr, retx, sizes, timeouts, sim_loss = [], [], [], [], [], [], []
+    seg, rtt, est, rto, thr, retx, sizes, timeouts, sim_loss = [], [], [], [], [], [], [], [], []
     with open(path) as f:
         for row in csv.DictReader(f):
             seg.append(int(row["segment"]))
             sizes.append(int(row["size_bytes"]))
             rtt.append(float(row["rtt_ms"]))
+            est.append(float(row["rtt_estimated_ms"]) if row.get("rtt_estimated_ms") else None)
+            rto.append(float(row["timeout_ms"]) if row.get("timeout_ms") else None)
             thr.append(float(row["throughput_kbps"]))
             retx.append(int(row["retransmissions"]))
             timeouts.append(int(row["timeout_occurred"]))
@@ -73,8 +75,9 @@ def main():
     thr_ma = [b / t for b, t in zip(bits_ma, time_ma)]
     rtt_ma = moving_average(rtt, args.janela)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(11, 8), sharex=True,
-                                        gridspec_kw={"height_ratios": [3, 3, 1]})
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(
+        4, 1, figsize=(11, 10), sharex=True,
+        gridspec_kw={"height_ratios": [3, 3, 2, 1]})
 
     if window == 1:
         # No SAW chega um segmento por vez: o throughput de cada segmento faz sentido.
@@ -96,22 +99,37 @@ def main():
     ax2.plot(seg, rtt, lw=0.5, alpha=0.35, color="tab:orange", label="RTT por segmento")
     ax2.plot(seg, rtt_ma, lw=1.8, color="tab:orange", label=f"média móvel ({args.janela} seg.)")
     ax2.axhline(avg_rtt, color="tab:gray", ls="--", label=f"RTT médio ({avg_rtt:.1f} ms)")
+    est_points = [(s, v) for s, v in zip(seg, est) if v is not None]
+    if est_points:
+        ax2.plot([p[0] for p in est_points], [p[1] for p in est_points],
+                 lw=1.5, color="tab:blue", label="RTT estimado (EWMA)")
     ax2.set_ylabel("RTT (ms)")
     ax2.legend(loc="upper right", fontsize=8)
     ax2.grid(alpha=0.3)
 
+    rto_points = [(s, v) for s, v in zip(seg, rto) if v is not None]
+    if rto_points:
+        ax3.plot([p[0] for p in rto_points], [p[1] for p in rto_points],
+                 lw=1.2, color="tab:red", label="timeout usado")
+        ax3.set_ylabel("Timeout (ms)")
+        ax3.legend(loc="upper right", fontsize=8)
+        ax3.grid(alpha=0.3)
+    else:
+        ax3.text(0.5, 0.5, "Timeout fixo", ha="center", va="center", transform=ax3.transAxes)
+        ax3.set_ylabel("Timeout")
+
     # Faixa de eventos: uma linha para timeout, outra para perda simulada.
     # (No GBN quase todo segmento é retransmitido "de carona", então marcar
     # retransmissões cobriria o gráfico inteiro; o timeout é o evento que importa.)
-    ax3.eventplot([timeout_segs, sim_loss_segs], lineoffsets=[1, 0], linelengths=0.7,
+    ax4.eventplot([timeout_segs, sim_loss_segs], lineoffsets=[1, 0], linelengths=0.7,
                   linewidths=0.6, colors=["tab:red", "tab:purple"])
-    ax3.set_yticks([1, 0])
-    ax3.set_yticklabels([f"timeout ({len(timeout_segs)})",
+    ax4.set_yticks([1, 0])
+    ax4.set_yticklabels([f"timeout ({len(timeout_segs)})",
                          f"perda simulada ({len(sim_loss_segs)})"], fontsize=8)
-    ax3.set_ylim(-0.6, 1.6)
-    ax3.set_xlabel("Segmento")
-    ax3.set_title(f"Eventos — {total_retx} retransmissões no total", fontsize=9, loc="left")
-    ax3.grid(axis="x", alpha=0.3)
+    ax4.set_ylim(-0.6, 1.6)
+    ax4.set_xlabel("Segmento")
+    ax4.set_title(f"Eventos — {total_retx} retransmissões no total", fontsize=9, loc="left")
+    ax4.grid(axis="x", alpha=0.3)
 
     out = path.rsplit(".", 1)[0] + ".png"
     fig.tight_layout()

@@ -16,7 +16,6 @@ from comum import make_row, progress, recv_data, send_ack, send_req
 def run(sess):
     total = sess["total_segments"]
     N = sess["window"]
-    timeout = sess["timeout_s"]
 
     payloads = [None] * total      # buffer de recebidos (inclui os fora de ordem)
     received = [False] * total
@@ -33,7 +32,8 @@ def run(sess):
         # 2) Pendentes = enviados na janela e ainda sem DATA. O próximo timeout
         #    é o do pendente com envio mais antigo (timer individual por segmento).
         pending = [s for s in range(base, next_seq) if not received[s]]
-        deadline = min(sess["last_send"][s] for s in pending) + sess["timeout_s"]
+        deadline = min(sess["last_send"][s] + sess["timeout_at_send"][s]
+                       for s in pending)
 
         pkt = recv_data(sess, deadline)
 
@@ -42,7 +42,7 @@ def run(sess):
             #    (recv_data já devolve None só quando o deadline passou)
             now = time.perf_counter()
             for s in pending:
-                if now - sess["last_send"][s] >= sess["timeout_s"]:
+                if now - sess["last_send"][s] >= sess["timeout_at_send"][s]:
                     send_req(sess, s)
             continue
 

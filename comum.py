@@ -39,9 +39,9 @@ RECV_BUFFER = 65535
 
 # Colunas do CSV por segmento: as da especificação + simulated_loss, sim_drops, recv_time_ms
 SEGMENT_COLUMNS = [
-    "segment", "timestamp", "size_bytes", "rtt_ms", "rtt_estimated_ms", "timeout_ms",
+    "segment", "timestamp", "size_bytes", "rtt_ms", "rtt_estimated_ms", "dev_rtt_ms", "timeout_ms",
     "throughput_kbps", "retransmissions", "timeout_occurred", "window_size", "protocol",
-    "simulated_loss", "sim_drops", "recv_time_ms",
+    "simulated_loss", "sim_drops", "recv_time_ms", "timeout_mode", "alpha", "beta",
 ]
 
 # Colunas do resumo (uma linha por execução) -> base da tabela comparativa
@@ -51,6 +51,10 @@ SUMMARY_COLUMNS = [
     "throughput_teorico_kbps", "throughput_medido_kbps", "eficiencia_pct",
     "retransmissoes", "segmentos_com_timeout", "segmentos_com_perda_simulada",
     "dados_descartados_simulados", "md5", "md5_ok", "done_ok", "csv",
+]
+
+DELIVERY3_SUMMARY_COLUMNS = SUMMARY_COLUMNS[:-1] + [
+    "timeout_mode", "alpha", "beta", "rtt_inicial_ms", "dev_rtt_final_ms", "csv",
 ]
 
 
@@ -126,6 +130,11 @@ def new_session(args):
         "addr": (args.server, args.port),
         "timeout_s": args.timeout / 1000.0,     # Entrega 3: o protocolo pode mudar este valor
         "rtt_est_ms": None,                     # Entrega 3: RTT estimado pela EWMA (None = fixo)
+        "dev_rtt_ms": None,
+        "initial_rtt_ms": None,
+        "timeout_at_send": {},
+        "alpha": args.alpha,
+        "beta": args.beta,
         "max_retries": args.max_retries,
         "sock": socket.socket(socket.AF_INET, socket.SOCK_DGRAM),   # UDP
         "loss": args.loss,                      # probabilidade de descartar cada DATA
@@ -155,6 +164,8 @@ def handshake(sess):
     sess["segment_size"] = int(ok["segment_size"])      # o servidor pode ajustar
     print(f"Protocolo={sess['protocol']}  janela={sess['window']}  "
           f"perda simulada={a.loss:.0%}  seed={sess['seed']}")
+    print(f"Timeout={a.timeout_mode}  RTO inicial/fixo={a.timeout} ms" +
+          (f"  alpha={a.alpha:g} beta={a.beta:g}" if a.timeout_mode == "adaptive" else ""))
     sess["t_start"] = sess["last_arrival"] = time.perf_counter()
 
 
@@ -166,10 +177,31 @@ def send_req(sess, seq):
     if sess["sends"].get(seq, 0) > sess["max_retries"]:
         raise RuntimeError(f"Segmento {seq}: excedeu {sess['max_retries']} retransmissões")
     now = time.perf_counter()
+    sess["timeout_at_send"][seq] = sess["timeout_s"]
     sess["sock"].sendto(f"REQ|seq={seq}".encode(), sess["addr"])
     sess["sends"][seq] = sess["sends"].get(seq, 0) + 1
     sess["last_send"][seq] = now
     return now
+
+
+def update_rtt_estimator(sess, sample_ms):
+    """Atualiza SRTT/DevRTT e o RTO adaptativo. Chamado só para amostra Karn-válida."""
+    if sess["protocol"] not in ("gbn", "sr") or sess["args"].timeout_mode != "adaptive":
+        return
+    if sess["rtt_est_ms"] is None:
+        # Inicialização recomendada pelo TCP: SRTT=R e RTTVAR=R/2.
+        sess["rtt_est_ms"] = sample_ms
+        sess["dev_rtt_ms"] = sample_ms / 2.0
+        sess["initial_rtt_ms"] = sample_ms
+    else:
+        old_estimate = sess["rtt_est_ms"]
+        sess["dev_rtt_ms"] = ((1 - sess["beta"]) * sess["dev_rtt_ms"]
+                               + sess["beta"] * abs(sample_ms - old_estimate))
+        sess["rtt_est_ms"] = ((1 - sess["alpha"]) * old_estimate
+                              + sess["alpha"] * sample_ms)
+    # Limites operacionais evitam RTO zero ou espera ilimitada em caminhos ruins.
+    sess["timeout_s"] = min(60.0, max(0.001,
+        (sess["rtt_est_ms"] + 4 * sess["dev_rtt_ms"]) / 1000.0))
 
 
 def send_ack(sess, seq):
@@ -228,6 +260,9 @@ def make_row(sess, seq, payload, t_recv, window_size, timeout_occurred=None):
       sim_drops       = quantos DATA deste seq foram descartados
     """
     retx = retransmissions(sess, seq)
+    rtt_ms = (t_recv - sess["last_send"][seq]) * 1000.0
+    if retx == 0:
+        update_rtt_estimator(sess, rtt_ms)  # Karn: ignora amostras ambíguas após retransmissão.
     drops = sess["sim_drops"].get(seq, 0)
     dt = max(t_recv - sess["last_arrival"], 1e-6)
     sess["last_arrival"] = t_recv
@@ -240,7 +275,8 @@ def make_row(sess, seq, payload, t_recv, window_size, timeout_occurred=None):
         "size_bytes": len(payload),
         "rtt_ms": f"{(t_recv - sess['last_send'][seq]) * 1000.0:.3f}",
         "rtt_estimated_ms": "" if rtt_est is None else f"{rtt_est:.3f}",
-        "timeout_ms": f"{sess['timeout_s'] * 1000.0:g}",     # timeout vigente neste segmento
+        "dev_rtt_ms": "" if sess["dev_rtt_ms"] is None else f"{sess['dev_rtt_ms']:.3f}",
+        "timeout_ms": f"{sess['timeout_at_send'][seq] * 1000.0:g}",
         "throughput_kbps": f"{(len(payload) * 8 / 1000.0) / dt:.3f}",
         "retransmissions": retx,
         "timeout_occurred": timeout_occurred,
@@ -249,6 +285,9 @@ def make_row(sess, seq, payload, t_recv, window_size, timeout_occurred=None):
         "simulated_loss": int(drops > 0),
         "sim_drops": drops,
         "recv_time_ms": f"{(t_recv - sess['t_start']) * 1000.0:.3f}",
+        "timeout_mode": sess["args"].timeout_mode,
+        "alpha": f"{sess['alpha']:g}" if sess["args"].timeout_mode == "adaptive" else "",
+        "beta": f"{sess['beta']:g}" if sess["args"].timeout_mode == "adaptive" else "",
     }
 
 
@@ -338,13 +377,30 @@ def finish(sess, payloads, rows):
         "dados_descartados_simulados": sess["total_sim_drops"],
         "md5": md5, "md5_ok": int(md5_ok), "done_ok": done.get("ok"), "csv": csv_name,
     }
-    # resumo próprio da Entrega 2 (colunas diferentes do resumo.csv da Entrega 1)
-    path = os.path.join(a.outdir, "resumo_entrega2.csv")
-    write_header = not os.path.exists(path)
-    with open(path, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=SUMMARY_COLUMNS)
+    # Preserva o conjunto oficial da Entrega 2 e mantém os experimentos da Entrega 3 separados.
+    if a.timeout_mode == "fixed":
+        path = os.path.join(a.outdir, "resumo_entrega2.csv")
+        write_header = not os.path.exists(path)
+        with open(path, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=SUMMARY_COLUMNS)
+            if write_header:
+                w.writeheader()
+            w.writerow(summary)
+    path3 = os.path.join(a.outdir, "resumo_entrega3.csv")
+    write_header = not os.path.exists(path3)
+    summary3 = {k: v for k, v in summary.items() if k != "csv"}
+    summary3.update({
+        "timeout_mode": a.timeout_mode,
+        "alpha": f"{a.alpha:g}" if a.timeout_mode == "adaptive" else "",
+        "beta": f"{a.beta:g}" if a.timeout_mode == "adaptive" else "",
+        "rtt_inicial_ms": "" if sess["initial_rtt_ms"] is None else f"{sess['initial_rtt_ms']:.3f}",
+        "dev_rtt_final_ms": "" if sess["dev_rtt_ms"] is None else f"{sess['dev_rtt_ms']:.3f}",
+        "csv": csv_name,
+    })
+    with open(path3, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=DELIVERY3_SUMMARY_COLUMNS)
         if write_header:
             w.writeheader()
-        w.writerow(summary)
+        w.writerow(summary3)
 
     return md5_ok and done.get("ok") == "1"
