@@ -35,6 +35,8 @@ def parse_args():
                     help="modo do timeout; adaptive está disponível em GBN e SR")
     ap.add_argument("--alpha", type=float, default=0.125, help="peso do RTT medido na EWMA")
     ap.add_argument("--beta", type=float, default=0.25, help="peso do desvio na EWMA")
+    ap.add_argument("--min-rto", type=float, default=1.0,
+                    help="piso do timeout adaptativo em ms (TCP real: 200 ms a 1 s)")
     ap.add_argument("--max-retries", type=int, default=DEFAULT_MAX_RETRIES)
     ap.add_argument("--outdir", default="resultados", help="pasta de saída (CSV, .bin, resumo)")
     args = ap.parse_args()

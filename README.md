@@ -497,7 +497,7 @@ médio e final, RTT estimado e DevRTT finais).
 ```bash
 caffeinate -i ./rodar_entrega3.sh varredura                         # α × β, SR-16, small (~20 min)
 .venv/bin/python rtt_adaptativo.py varredura                        # tabela + mapas de calor -> escolher α, β
-caffeinate -i env ALPHA=0.0625 BETA=0.125 ./rodar_entrega3.sh comparacao   # fixo × adaptativo
+caffeinate -i env ALPHA=0.25 BETA=0.125 ./rodar_entrega3.sh comparacao   # fixo × adaptativo
 .venv/bin/python rtt_adaptativo.py comparacao                       # tabela + gráfico de barras
 ```
 
@@ -508,9 +508,9 @@ Arquivo large, um por vez (a última execução é a da captura do Wireshark, fi
 D=entregas/entrega3/dados/large
 python3 cliente.py --group grupo10 --file large --protocol saw --outdir $D
 python3 cliente.py --group grupo10 --file large --protocol gbn --window 16 --timeout-mode fixed --outdir $D
-python3 cliente.py --group grupo10 --file large --protocol gbn --window 16 --timeout-mode adaptive --alpha 0.0625 --beta 0.125 --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol gbn --window 16 --timeout-mode adaptive --alpha 0.25 --beta 0.125 --outdir $D
 python3 cliente.py --group grupo10 --file large --protocol sr  --window 16 --timeout-mode fixed --outdir $D
-python3 cliente.py --group grupo10 --file large --protocol sr  --window 16 --timeout-mode adaptive --alpha 0.0625 --beta 0.125 --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol sr  --window 16 --timeout-mode adaptive --alpha 0.25 --beta 0.125 --outdir $D
 .venv/bin/python rtt_adaptativo.py final                            # tabela integrada + barras
 ```
 

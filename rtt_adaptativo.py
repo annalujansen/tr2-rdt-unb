@@ -58,6 +58,20 @@ def read_summary(path):
     return rows
 
 
+def karn_rtt(r):
+    """RTT médio da execução só com segmentos sem retransmissão (algoritmo de Karn).
+    O rtt_medio_ms do resumo inclui amostras medidas a partir do reenvio, que ficam
+    artificialmente curtas; por isso relê o CSV por segmento indicado em r["csv"]."""
+    path = r.get("csv", "")
+    if not os.path.exists(path):
+        return float(r["rtt_medio_ms"])
+    with open(path) as f:
+        seg = list(csv.DictReader(f))
+    xs = [float(x["rtt_ms"]) for x in seg if x["retransmissions"] == "0"] or \
+         [float(x["rtt_ms"]) for x in seg]
+    return mean(xs)
+
+
 def mean(xs):
     return sum(xs) / len(xs)
 
@@ -70,7 +84,7 @@ def stats(rows):
     return {
         "n": len(rows), "tempo": f("tempo_total_s"), "kbps": f("throughput_medido_kbps"),
         "retx": retx, "drops": drops, "espurias": max(0.0, retx - drops),
-        "timeouts": f("segmentos_com_timeout"), "rtt": f("rtt_medio_ms"),
+        "timeouts": f("segmentos_com_timeout"), "rtt": mean([karn_rtt(r) for r in rows]),
         "to_medio": f("timeout_medio_ms"),
     }
 
@@ -253,7 +267,7 @@ def cmd_final(args):
             continue
         r = latest[k]
         lines.append([NAMES[k[0]], k[1], k[2], r["throughput_medido_kbps"], r["retransmissoes"],
-                      r["tempo_total_s"], r["rtt_medio_ms"], r["timeout_medio_ms"], r["md5"]])
+                      r["tempo_total_s"], f"{karn_rtt(r):.2f}", r["timeout_medio_ms"], r["md5"]])
         labels.append(f"{NAMES[k[0]]}-{k[1]}\n{k[2]}")
         vals.append(float(r["throughput_medido_kbps"]))
         colors.append(COLORS[k[0]])

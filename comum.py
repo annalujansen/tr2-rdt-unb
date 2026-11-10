@@ -201,7 +201,7 @@ def update_rtt_estimator(sess, sample_ms):
         sess["rtt_est_ms"] = ((1 - sess["alpha"]) * old_estimate
                               + sess["alpha"] * sample_ms)
     # Limites operacionais evitam RTO zero ou espera ilimitada em caminhos ruins.
-    sess["timeout_s"] = min(60.0, max(0.001,
+    sess["timeout_s"] = min(60.0, max(sess["args"].min_rto / 1000.0,
         (sess["rtt_est_ms"] + 4 * sess["dev_rtt_ms"]) / 1000.0))
 
 
@@ -331,6 +331,8 @@ def finish(sess, payloads, rows):
     # ficam separados (ex.: small_sr_w16_loss5_fixo500 / small_sr_w16_loss5_adapt_a0.125_b0.25).
     mode = (f"adapt_a{a.alpha:g}_b{a.beta:g}" if a.timeout_mode == "adaptive"
             else f"fixo{a.timeout}")
+    if a.timeout_mode == "adaptive" and a.min_rto != 1.0:
+        mode += f"_min{a.min_rto:g}"
     tag = f"{sess['protocol']}_w{sess['window']}_loss{a.loss * 100:g}_{mode}"
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     rundir = os.path.join(a.outdir, f"{a.file}_{tag}")
@@ -345,7 +347,11 @@ def finish(sess, payloads, rows):
         w.writerows(rows)
 
     # ----- métricas -----
-    rtts = [float(r["rtt_ms"]) for r in rows]
+    # RTT médio só com amostras Karn-válidas: num segmento retransmitido o rtt_ms é
+    # medido a partir do ÚLTIMO REQ e fica artificialmente curto (o DATA pode ser a
+    # resposta ao REQ original). Se todos foram retransmitidos, usa todas as amostras.
+    rtts = ([float(r["rtt_ms"]) for r in rows if r["retransmissions"] == 0]
+            or [float(r["rtt_ms"]) for r in rows])
     avg_rtt = sum(rtts) / len(rtts)
     total_retx = sum(r["retransmissions"] for r in rows)
     seg_timeouts = sum(r["timeout_occurred"] for r in rows)
@@ -359,7 +365,7 @@ def finish(sess, payloads, rows):
     print(f"Arquivo salvo:          {out_file} ({sess['file_size']} bytes, {total} segmentos)")
     print(f"CSV:                    {csv_name}")
     print(f"Tempo total:            {elapsed:.2f} s")
-    print(f"RTT médio:              {avg_rtt:.2f} ms (min {min(rtts):.2f}, max {max(rtts):.2f})")
+    print(f"RTT médio (Karn):       {avg_rtt:.2f} ms (min {min(rtts):.2f}, max {max(rtts):.2f})")
     print(f"Retransmissões:         {total_retx}  (segmentos com timeout: {seg_timeouts})")
     print(f"DATA descartados (sim): {sess['total_sim_drops']}  (segmentos afetados: {seg_simloss})")
     print(f"Throughput medido:      {measured_kbps:.2f} kbps")
