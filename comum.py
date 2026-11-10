@@ -54,7 +54,8 @@ SUMMARY_COLUMNS = [
 ]
 
 DELIVERY3_SUMMARY_COLUMNS = SUMMARY_COLUMNS[:-1] + [
-    "timeout_mode", "alpha", "beta", "rtt_inicial_ms", "dev_rtt_final_ms", "csv",
+    "timeout_mode", "alpha", "beta", "rtt_inicial_ms", "dev_rtt_final_ms",
+    "rtt_est_final_ms", "timeout_medio_ms", "timeout_final_ms", "csv",
 ]
 
 
@@ -326,7 +327,11 @@ def finish(sess, payloads, rows):
     # O nome do CSV segue a especificação (metrics_<grupo>_<protocolo>_<timestamp>.csv).
     # Cada cenário (arquivo, protocolo, janela, perda) tem a sua pasta, então
     # nada é sobrescrito e dá para saber de qual execução é cada CSV.
-    tag = f"{sess['protocol']}_w{sess['window']}_loss{a.loss * 100:g}"
+    # O modo do timeout entra no nome da pasta: fixo e adaptativo do mesmo cenário
+    # ficam separados (ex.: small_sr_w16_loss5_fixo500 / small_sr_w16_loss5_adapt_a0.125_b0.25).
+    mode = (f"adapt_a{a.alpha:g}_b{a.beta:g}" if a.timeout_mode == "adaptive"
+            else f"fixo{a.timeout}")
+    tag = f"{sess['protocol']}_w{sess['window']}_loss{a.loss * 100:g}_{mode}"
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     rundir = os.path.join(a.outdir, f"{a.file}_{tag}")
     os.makedirs(rundir, exist_ok=True)
@@ -360,6 +365,10 @@ def finish(sess, payloads, rows):
     print(f"Throughput medido:      {measured_kbps:.2f} kbps")
     print(f"Throughput teórico:     {theoretical_kbps:.2f} kbps  (janela*segment_size*8 / RTT médio)")
     print(f"Eficiência:             {eff:.1f}%")
+    timeouts_ms = [float(r["timeout_ms"]) for r in rows]
+    avg_timeout = sum(timeouts_ms) / len(timeouts_ms)
+    print(f"Timeout ({a.timeout_mode}):    médio {avg_timeout:.1f} ms  "
+          f"final {sess['timeout_s'] * 1000:.1f} ms")
     print(f"Checksum servidor:      {'OK' if done.get('ok') == '1' else 'FALHOU'}")
 
     summary = {
@@ -395,6 +404,9 @@ def finish(sess, payloads, rows):
         "beta": f"{a.beta:g}" if a.timeout_mode == "adaptive" else "",
         "rtt_inicial_ms": "" if sess["initial_rtt_ms"] is None else f"{sess['initial_rtt_ms']:.3f}",
         "dev_rtt_final_ms": "" if sess["dev_rtt_ms"] is None else f"{sess['dev_rtt_ms']:.3f}",
+        "rtt_est_final_ms": "" if sess["rtt_est_ms"] is None else f"{sess['rtt_est_ms']:.3f}",
+        "timeout_medio_ms": f"{avg_timeout:.3f}",
+        "timeout_final_ms": f"{sess['timeout_s'] * 1000:.3f}",
         "csv": csv_name,
     })
     with open(path3, "a", newline="") as f:

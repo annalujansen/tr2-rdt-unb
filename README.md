@@ -486,25 +486,36 @@ de Karn. O RTO é guardado por envio: o SR usa o prazo próprio de cada segmento
 um único timer para a base e o reinicia quando a base avança ou é retransmitida. Há limites
 operacionais de 1 ms e 60 s.
 
-O CSV por segmento inclui RTT medido, RTT estimado, DevRTT, timeout usado, modo, α e β.
-`graficos.py` desenha as séries de RTT e timeout. Os resumos da Entrega 3 ficam separados em
-`<outdir>/resumo_entrega3.csv`; a tabela pareada e o gráfico da comparação são
-`comparacao_entrega3.csv` e `comparacao_entrega3.png`.
+O CSV por segmento inclui RTT medido, RTT estimado, DevRTT, timeout usado (o RTO vigente no
+envio do REQ), modo, α e β. Cada execução grava em
+`<outdir>/<arquivo>_<protocolo>_w<janela>_loss<perda>_<modo>/`, com `<modo>` = `fixo500` ou
+`adapt_a<α>_b<β>`, e acrescenta uma linha em `<outdir>/resumo_entrega3.csv` (inclui timeout
+médio e final, RTT estimado e DevRTT finais).
 
-As execuções continuam sendo iniciadas por `cliente.py`. Exemplo para GBN adaptativo:
-
-```bash
-python3 cliente.py --group grupo10 --file small --protocol gbn --window 16 --loss 0.05 --seed 42 --timeout-mode adaptive --alpha 0.125 --beta 0.25 --outdir resultados_entrega3
-python3 cliente.py --group grupo10 --file small --protocol gbn --window 16 --loss 0.05 --seed 42 --timeout-mode fixed --outdir resultados_entrega3
-```
-
-Repita ambos com `--loss 0.10` e para SR, e compare também os pares (α, β) = (0.25, 0.25)
-e (0.125, 0.5), sempre mantendo arquivo, janela, seed e demais opções iguais. Os resultados
-ficam em `resultados_entrega3/`. O comparador aceita `--protocolo gbn` ou `--protocolo sr`:
+### Roteiro dos experimentos
 
 ```bash
-python3 comparacao_entrega3.py --resumo resultados_entrega3/resumo_entrega3.csv --protocolo gbn --arquivo small --saida resultados_entrega3
+caffeinate -i ./rodar_entrega3.sh varredura                         # α × β, SR-16, small (~20 min)
+.venv/bin/python rtt_adaptativo.py varredura                        # tabela + mapas de calor -> escolher α, β
+caffeinate -i env ALPHA=0.0625 BETA=0.125 ./rodar_entrega3.sh comparacao   # fixo × adaptativo
+.venv/bin/python rtt_adaptativo.py comparacao                       # tabela + gráfico de barras
 ```
 
-Para cada CSV, gere os gráficos detalhados de RTT estimado e timeout com
-`python3 graficos.py caminho/metrics_grupo10_<protocolo>_<timestamp>.csv`.
+Arquivo large, um por vez (a última execução é a da captura do Wireshark, filtro
+`udp and host 137.131.178.229`):
+
+```bash
+D=entregas/entrega3/dados/large
+python3 cliente.py --group grupo10 --file large --protocol saw --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol gbn --window 16 --timeout-mode fixed --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol gbn --window 16 --timeout-mode adaptive --alpha 0.0625 --beta 0.125 --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol sr  --window 16 --timeout-mode fixed --outdir $D
+python3 cliente.py --group grupo10 --file large --protocol sr  --window 16 --timeout-mode adaptive --alpha 0.0625 --beta 0.125 --outdir $D
+.venv/bin/python rtt_adaptativo.py final                            # tabela integrada + barras
+```
+
+Gráficos de uma execução:
+- `rtt_adaptativo.py serie <csv> [--inicio 0 --fim 300]`: RTT medido × estimado (amostras
+  ignoradas por Karn marcadas) e timeout ao longo da transferência; com `--fim`, zoom na convergência.
+- `graficos.py <csv>`: throughput, RTT, timeout e eventos.
+- `comparacao_entrega3.py`: tabela pareada fixo × adaptativo de uma única execução por cenário.
